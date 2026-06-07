@@ -125,7 +125,7 @@ const content = {
     hero: {
       eyebrow: 'Legal Space',
       h1a: 'Your legal department,',
-      h1b: 'running at full speed',
+      h1b: 'running at full speed.',
       p: 'Legal Space helps in-house legal teams work smarter - through consulting, a purpose-built platform, and operational support. We handle the complexity so your team can focus on what matters.',
       btn1: 'Book a discovery call',
       btn2: 'See our platform',
