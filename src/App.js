@@ -1,114 +1,215 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import './App.css';
-import logo from './assets/logo.png';
+import BlurText from './components/BlurText';
+import MagicBento from './components/MagicBento';
+import { BrowserRouter, Switch, Route, Link } from 'react-router-dom';
+import ScrollStack, { ScrollStackItem } from './components/ScrollStack';
+import BookACall from './components/BookACall';
+import { LenisProvider, useLenis } from './components/LenisContext';
+import GlobeCanvas from './components/GlobeCanvas';
 import {
   HiOutlineDocumentText,
-  HiOutlineScale,
-  HiOutlineChip,
+  HiOutlineSparkles,
+  HiOutlineMailOpen,
+  HiOutlinePencilAlt,
   HiOutlineLockClosed,
-  HiOutlineCheckCircle,
   HiOutlineShieldCheck,
   HiOutlineArrowRight,
   HiOutlinePhone,
   HiOutlineLightningBolt,
   HiOutlineGlobe,
-  HiOutlineRefresh,
-  HiOutlineCurrencyEuro,
-  HiOutlineGift,
+  HiOutlineCog,
   HiOutlineExclamationCircle,
   HiOutlineServer,
   HiOutlineEyeOff,
   HiOutlineClipboardCheck,
+  HiOutlineBadgeCheck,
 } from 'react-icons/hi';
 
-// ─── PLATFORM MODULES ────────────────────────────────────────────────────────
-const platformModules = {
+// ─── HOOKS: scroll-driven hero + reveal on view ────────────────────────────────
+function useHeroScrollProgress() {
+  const [progress, setProgress] = useState(0);
+  useEffect(() => {
+    let raf = null;
+    const handle = () => {
+      const heroEl = document.querySelector('.hero');
+      if (!heroEl) return;
+      const h = heroEl.offsetHeight;
+      const p = Math.min(Math.max(window.scrollY / (h * 0.8), 0), 1);
+      setProgress(p);
+    };
+    const onScroll = () => {
+      if (raf) return;
+      raf = requestAnimationFrame(() => { handle(); raf = null; });
+    };
+    handle();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+  return progress;
+}
+
+function useInView(threshold = 0.25) {
+  const ref = useRef(null);
+  const [inView, setInView] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) setInView(true); },
+      { threshold }
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [threshold]);
+  return [ref, inView];
+}
+
+// ─── HELPER: render title with *italic* markup ─────────────────────────────────
+function EmTitle({ text, as = 'h2', className = '', blur = false, delay = 80 }) {
+  const Tag = as;
+  if (blur) {
+    return (
+      <BlurText
+        text={text}
+        as={as}
+        className={className}
+        animateBy="words"
+        direction="top"
+        delay={delay}
+        stepDuration={0.3}
+      />
+    );
+  }
+  const parts = text.split(/\*(.+?)\*/g);
+  return (
+    <Tag className={className}>
+      {parts.map((part, i) => (i % 2 === 1 ? <em key={i}>{part}</em> : part))}
+    </Tag>
+  );
+}
+
+// ─── NAV LINK: smooth-scrolls via the shared Lenis instance instead of a
+//     native <a href="#..."> jump, so it never fights the global Lenis RAF
+//     loop (see LenisContext.jsx). Falls back to scrollIntoView if Lenis
+//     hasn't registered yet (e.g. clicked during initial page load). ─────────
+function NavScrollLink({ targetId, children, className }) {
+  const { scrollTo } = useLenis();
+
+  const handleClick = e => {
+    e.preventDefault();
+    const target = document.querySelector(targetId);
+    if (!target) return;
+    scrollTo(target, { offset: -80, duration: 1.1 }); // offset clears the fixed nav height
+  };
+
+  return (
+    <a href={targetId} className={className} onClick={handleClick}>
+      {children}
+    </a>
+  );
+}
+
+// ─── THE FLOW (signature element) ──────────────────────────────────────────────
+const flowSteps = {
   en: [
-    { Icon: HiOutlineDocumentText, name: 'Contract Lifecycle', outcome: 'Never miss a renewal or signature again.' },
-    { Icon: HiOutlineScale, name: 'Matter Management', outcome: 'Every case, deadline, and owner - visible at a glance.' },
-    { Icon: HiOutlineRefresh, name: 'Workflow Automation', outcome: 'Approvals happen in hours, not weeks of email chains.' },
-    { Icon: HiOutlineCurrencyEuro, name: 'Legal Spend', outcome: 'Know exactly what you spend on outside counsel - and why.' },
-    { Icon: HiOutlineGift, name: 'Gifts & Invitations', outcome: 'Stay compliant without slowing down your teams.' },
-    { Icon: HiOutlineChip, name: 'AI Assistant', outcome: 'Ask questions. Get answers from your own data instantly.' },
+    {
+      num: '01', key: 'generate', title: 'Generate',
+      verb: 'Fill a form.', result: 'Get a contract.',
+      desc: 'Pick a template, complete a short form with the deal details, and the contract drafts itself - clauses, names, and figures already in place.',
+      Icon: HiOutlineDocumentText,
+    },
+    {
+      num: '02', key: 'review', title: 'Review',
+      verb: 'AI reads it first.', result: 'You see what matters.',
+      desc: 'Before anyone signs off, the AI flags missing clauses, risky terms, and inconsistencies - so the review meeting is about decisions, not proofreading.',
+      Icon: HiOutlineSparkles,
+    },
+    {
+      num: '03', key: 'approve', title: 'Approve',
+      verb: 'One email.', result: 'One click.',
+      desc: 'The approver gets a plain-language summary and a secure link. No login, no attachment to hunt for - approve or send it back in seconds.',
+      Icon: HiOutlineMailOpen,
+    },
+    {
+      num: '04', key: 'sign', title: 'Sign',
+      verb: 'Send to signature.', result: 'Legally done.',
+      desc: 'Once approved, the contract moves straight to e-signature. Every party signs, every step is logged, and the final PDF lands wherever you need it.',
+      Icon: HiOutlinePencilAlt,
+    },
   ],
   fr: [
-    { Icon: HiOutlineDocumentText, name: 'Cycle de vie des contrats', outcome: 'Plus jamais un renouvellement ou une signature manqués.' },
-    { Icon: HiOutlineScale, name: 'Gestion des affaires', outcome: 'Chaque affaire, délai et responsable - visibles en un coup d\'œil.' },
-    { Icon: HiOutlineRefresh, name: 'Automatisation', outcome: 'Les approbations en heures, pas en semaines d\'emails.' },
-    { Icon: HiOutlineCurrencyEuro, name: 'Dépenses juridiques', outcome: 'Sachez exactement ce que vous dépensez en prestataires externes.' },
-    { Icon: HiOutlineGift, name: 'Cadeaux & Invitations', outcome: 'Restez conforme sans ralentir vos équipes.' },
-    { Icon: HiOutlineChip, name: 'Assistant IA', outcome: 'Posez des questions. Obtenez des réponses de vos propres données.' },
+    {
+      num: '01', key: 'generate', title: 'Générer',
+      verb: 'Remplissez un formulaire.', result: 'Obtenez un contrat.',
+      desc: 'Choisissez un modèle, complétez un court formulaire avec les détails - le contrat se rédige seul, clauses, noms et montants déjà en place.',
+      Icon: HiOutlineDocumentText,
+    },
+    {
+      num: '02', key: 'review', title: 'Vérifier',
+      verb: "L'IA lit en premier.", result: "Vous voyez l'essentiel.",
+      desc: "Avant toute validation, l'IA signale les clauses manquantes, les termes à risque et les incohérences - la réunion de relecture devient une décision, pas une chasse aux erreurs.",
+      Icon: HiOutlineSparkles,
+    },
+    {
+      num: '03', key: 'approve', title: 'Approuver',
+      verb: 'Un email.', result: 'Un clic.',
+      desc: "L'approbateur reçoit un résumé clair et un lien sécurisé. Pas de connexion, pas de pièce jointe à chercher - approuvez ou renvoyez en quelques secondes.",
+      Icon: HiOutlineMailOpen,
+    },
+    {
+      num: '04', key: 'sign', title: 'Signer',
+      verb: 'Envoyé à la signature.', result: 'Juridiquement finalisé.',
+      desc: "Une fois approuvé, le contrat part directement en signature électronique. Chaque étape est journalisée, le PDF final arrive où vous en avez besoin.",
+      Icon: HiOutlinePencilAlt,
+    },
   ],
 };
 
-// ─── SERVICES (2 offerings) ────────────────────────────────────────────────────
-const services = {
+// ─── FEATURES (outcomes, not jargon) ───────────────────────────────────────────
+const features = {
   en: [
     {
-      tag: 'Consulting',
-      name: 'Legal Ops Consulting',
-      tagline: 'We build it inside your house.',
-      desc: 'We come to you, map your legal processes end-to-end, and build the solution directly in your existing Microsoft infrastructure - Power Apps and Power Automate. No new software to procure, no data leaving your tenant.',
-      bullets: [
-        'Process audit & gap analysis',
-        'Custom Power Apps development',
-        'Workflow & approval automation via Power Automate',
-        'Contract templates & digital playbooks',
-        'Training and change management',
-        'Runs entirely in your Azure / M365 tenant',
-      ],
-      cta: 'Talk to us about consulting',
-      featured: false,
+      Icon: HiOutlineDocumentText, name: 'Drafting *made effortless*',
+      outcome: 'Build once, reuse for every NDA, every services agreement, every renewal.',
+      bullets: ['Reusable template builder', 'Live editor, built in', 'Word Online for M365 teams'],
     },
     {
-      tag: 'SaaS Platform',
-      name: 'Legal Space Platform',
-      tagline: 'One platform. Everything legal.',
-      desc: 'Our purpose-built legal ops platform - deployed in your Azure or ours. CLM, Matter Management, Gifts & Invitations compliance, Legal Spend tracking, and an AI assistant trained on your own data. Up and running in days.',
-      bullets: [
-        'Contract Lifecycle Management (CLM)',
-        'Matter & deadline management',
-        'Gifts & Invitations compliance register',
-        'Legal spend & outside counsel control',
-        'AI assistant - your data, your answers',
-        'Deploys in your Azure or managed by us',
-      ],
-      cta: 'Explore the platform',
-      featured: true,
+      Icon: HiOutlineSparkles, name: '*AI-powered* risk review',
+      outcome: 'Catches missing clauses and risky terms before a human has to.',
+      bullets: ['Clause gap detection', 'Plain-language risk score', 'Flags before approval, not after'],
+    },
+    {
+      Icon: HiOutlineMailOpen, name: 'Approvals *from the inbox*',
+      outcome: 'Approvers act from their inbox - no new tool to learn, no account to create.',
+      bullets: ['One-click email approval', 'No login required', 'Secure, time-limited links'],
+    },
+    {
+      Icon: HiOutlineBadgeCheck, name: 'Signed *and accounted for*',
+      outcome: 'Legally binding signatures, triggered the moment approval lands.',
+      bullets: ['E-signature on approval', 'Full audit trail', 'Timestamped, traceable history'],
     },
   ],
   fr: [
     {
-      tag: 'Conseil',
-      name: 'Conseil Legal Ops',
-      tagline: 'Nous construisons chez vous.',
-      desc: 'Nous venons chez vous, cartographions vos processus juridiques de bout en bout, et construisons la solution directement dans votre infrastructure Microsoft existante - Power Apps et Power Automate. Pas de nouveau logiciel, pas de données qui quittent votre tenant.',
-      bullets: [
-        'Audit des processus & analyse des écarts',
-        'Développement Power Apps sur mesure',
-        'Automatisation via Power Automate',
-        'Modèles de contrats & playbooks digitaux',
-        'Formation et conduite du changement',
-        'Fonctionne entièrement dans votre tenant Azure / M365',
-      ],
-      cta: 'Parler du conseil',
-      featured: false,
+      Icon: HiOutlineDocumentText, name: 'La rédaction *simplifiée*',
+      outcome: 'Créez une fois, réutilisez pour chaque NDA, chaque prestation, chaque renouvellement.',
+      bullets: ['Modèles réutilisables', 'Édition en direct intégrée', 'Word Online pour les équipes M365'],
     },
     {
-      tag: 'Plateforme SaaS',
-      name: 'Plateforme Legal Space',
-      tagline: 'Une plateforme. Tout le juridique.',
-      desc: 'Notre plateforme legal ops dédiée - déployée dans votre Azure ou le nôtre. CLM, gestion des affaires, conformité cadeaux & invitations, suivi des dépenses juridiques, et un assistant IA entraîné sur vos propres données.',
-      bullets: [
-        'Contract Lifecycle Management (CLM)',
-        'Gestion des affaires & délais',
-        'Registre conformité cadeaux & invitations',
-        'Dépenses juridiques & prestataires externes',
-        'Assistant IA - vos données, vos réponses',
-        'Déployé dans votre Azure ou géré par nous',
-      ],
-      cta: 'Explorer la plateforme',
-      featured: true,
+      Icon: HiOutlineSparkles, name: 'Analyse des risques *par IA*',
+      outcome: 'Détecte les clauses manquantes et les termes à risque avant la relecture humaine.',
+      bullets: ['Détection des clauses manquantes', 'Score de risque clair', 'Signalé avant approbation'],
+    },
+    {
+      Icon: HiOutlineMailOpen, name: 'Approbation *depuis la boîte mail*',
+      outcome: 'Les approbateurs agissent depuis leur boîte mail - aucun outil à apprendre.',
+      bullets: ['Approbation en un clic', 'Aucune connexion requise', 'Liens sécurisés et limités dans le temps'],
+    },
+    {
+      Icon: HiOutlineBadgeCheck, name: 'Signé *et tracé*',
+      outcome: 'Signatures juridiquement valides, déclenchées dès l\'approbation reçue.',
+      bullets: ['Signature électronique automatique', 'Piste d\'audit complète', 'Historique horodaté et traçable'],
     },
   ],
 };
@@ -116,228 +217,473 @@ const services = {
 // ─── CONTENT ──────────────────────────────────────────────────────────────────
 const content = {
   en: {
-    nav: {
-      services: 'Services',
-      platform: 'Platform',
-      about: 'About',
-      cta: 'Book a call',
-    },
+    nav: { flow: 'How it works', features: 'Features', security: 'Security', cta: 'Book a call' },
     hero: {
-      eyebrow: 'Legal Space',
-      h1a: 'Your legal department,',
-      h1b: 'running at full speed.',
-      p: 'Legal Space helps in-house legal teams work smarter - through consulting, a purpose-built platform, and operational support. We handle the complexity so your team can focus on what matters.',
+      eyebrow: 'Contract Lifecycle Management',
+      h1a: 'From blank page',
+      h1b: 'to signed contract.',
+      p: 'One platform to draft, review, approve, and sign your contracts - with AI doing the reading so your team can do the deciding.',
       btn1: 'Book a discovery call',
-      btn2: 'See our platform',
-      stat1n: '2–4 weeks', stat1l: 'to first results',
+      btn2: 'See how it works',
+      stat1n: '4 steps', stat1l: 'start to signature',
       stat2n: 'EU', stat2l: 'data residency',
-      stat3n: 'FR · EN · RO', stat3l: 'multilingual team',
-    }, 
+      stat3n: 'Minutes', stat3l: 'not weeks, to approve',
+    },
     why_now: {
-      eyebrow: 'Why legal ops, why now',
-      title: 'Legal is the last department still running on email and spreadsheets',
-      sub: 'Every other function has been digitised. Legal hasn\'t. That gap is now a risk.',
+      eyebrow: 'The problem today',
+      title: 'Your contracts live in *email threads* and Word attachments',
+      sub: 'Versions get lost. Approvals sit unread. Risk slips through because no one had time to read clause 14 again.',
       pains: [
         { stat: '65%', label: 'of contract renewals are missed or delayed due to manual tracking' },
-        { stat: '12h', label: 'per week lost per lawyer on administrative tasks that software can eliminate' },
-        { stat: '3×', label: 'more outside counsel spend in companies without legal ops visibility' },
+        { stat: '12h', label: 'lost per week chasing approvals and re-reading the same clauses' },
+        { stat: '3×', label: 'longer signing cycles when signature is a separate, disconnected step' },
       ],
-      cta: 'See how we fix this',
+      cta: 'See the fix',
     },
-    packages: {
-      eyebrow: 'How we work',
-      title: 'Two ways to work with us',
-      sub: 'Consulting builds inside your existing Microsoft stack. The platform is our own product. Pick one - or combine both.',
+    flow: {
+      eyebrow: 'The platform',
+      title: 'One path. Four steps. *Zero lost emails.*',
+      sub: 'Every contract follows the same clear route - click a step to see it in action.',
     },
-    platform: {
-      eyebrow: 'Our platform',
-      title: 'Six modules. One login. Full control.',
-      sub: 'You see outcomes, not features. Start with one module, expand when ready.',
-      cta: 'Learn more about the platform',
+    features: {
+      eyebrow: 'What\'s inside',
+      title: 'Everything a contract needs to *get signed*',
+      sub: 'No bolt-ons, no separate tools to stitch together.',
     },
     security: {
       eyebrow: 'Data protection & IT security',
-      title: 'Legal teams get audited. So does our platform.',
-      sub: 'We built security in from day one - not as a checkbox, but because your clients\' data demands it.',
+      title: 'Your contracts are sensitive. *We treat them that way.*',
+      sub: 'Security isn\'t a feature we added - it\'s the reason the platform is shaped the way it is.',
       items: [
-        { Icon: HiOutlineServer, title: 'Deployed in your Azure', desc: 'Your data never leaves your infrastructure. The platform runs inside your own Azure tenant - not ours.' },
-        { Icon: HiOutlineLockClosed, title: 'GDPR by design', desc: 'EU data residency, role-based access, full audit trail. Compliant out of the box.' },
-        { Icon: HiOutlineEyeOff, title: 'AI that stays in-house', desc: 'The AI assistant runs on your data only. No training on your contracts. No data shared with third parties.' },
-        { Icon: HiOutlineClipboardCheck, title: 'Audit-ready', desc: 'Every action logged. Every approval traced. Every access recorded. Built for legal teams that get audited.' },
+        { Icon: HiOutlineServer, title: 'EU-hosted', desc: 'Your documents are stored on European infrastructure, built for GDPR from day one.' },
+        { Icon: HiOutlineLockClosed, title: 'Encrypted, always', desc: 'In transit and at rest. Role-based access means people only see what they\'re meant to.' },
+        { Icon: HiOutlineEyeOff, title: 'AI that doesn\'t wander', desc: 'The AI reads the document in front of it to do its job. Nothing is used to train external models.' },
+        { Icon: HiOutlineClipboardCheck, title: 'Audit-ready', desc: 'Every action logged, every approval traced. Ready the day someone asks "who approved this, and when?"' },
       ],
     },
     why: {
-      eyebrow: 'Why Legal Space',
-      title: 'A different kind of legal ops partner',
+      eyebrow: 'Why this platform',
+      title: 'Built to fit *how you already work*',
       items: [
-        { Icon: HiOutlineGlobe, title: 'Multilingual by default', desc: 'French, English, Romanian - we work in your language, not ours.' },
-        { Icon: HiOutlineLightningBolt, title: 'Fast to value', desc: 'First results in weeks, not quarters. We start where it hurts most.' },
-        { Icon: HiOutlineScale, title: 'Legal + tech + ops', desc: 'Rare combination: legal understanding, technology delivery, and operational execution.' },
-        { Icon: HiOutlineExclamationCircle, title: 'Honest about limits', desc: 'We don\'t do KYC or legal transformation alone - but we integrate with the specialists who do.' },
-      ],
-    },
-    how: {
-      eyebrow: 'How we work',
-      title: 'From first call to full operation',
-      steps: [
-        { num: '01', title: 'Discovery', desc: 'We map your current processes, pain points, and priorities in a structured assessment.' },
-        { num: '02', title: 'Design', desc: 'We propose the right combination of consulting, platform, and managed services for your situation.' },
-        { num: '03', title: 'Deploy', desc: 'We implement fast - most teams are live within two to four weeks.' },
-        { num: '04', title: 'Operate', desc: 'We stay close - through the platform, ongoing support, or as your extended legal ops team.' },
+        { Icon: HiOutlineCog, title: 'Configured to your flow', desc: 'Need a second approval step for high-value contracts? It\'s a setting, not a six-month project.' },
+        { Icon: HiOutlineLightningBolt, title: 'Live in weeks', desc: 'No procurement marathon. Most teams are drafting their first contract within days of onboarding.' },
+        { Icon: HiOutlineGlobe, title: 'Works in your language', desc: 'French, English, Romanian - the platform speaks your team\'s language, not just ours.' },
+        { Icon: HiOutlineExclamationCircle, title: 'Honest about scope', desc: 'This is contract lifecycle management, done properly - not a bloated suite pretending to do everything.' },
       ],
     },
     footer: {
-      tagline: 'Legal operations, built to scale.',
+      tagline: 'Contracts, from draft to signature, without the chaos.',
       badges: ['EU data residency', 'GDPR compliant', 'Multilingual team'],
-      copy: '© 2026 Legal Space',
+      copy: '© 2026',
     },
   },
   fr: {
-    nav: {
-      services: 'Services',
-      platform: 'Plateforme',
-      about: 'À propos',
-      cta: 'Prendre rendez-vous',
-    },
+    nav: { flow: 'Fonctionnement', features: 'Fonctionnalités', security: 'Sécurité', cta: 'Prendre rendez-vous' },
     hero: {
-      eyebrow: 'Partenaire Legal Operations',
-      h1a: 'Votre département juridique,',
-      h1b: 'à pleine vitesse',
-      p: 'Legal Space accompagne les équipes juridiques internes pour travailler plus efficacement - grâce au conseil, une plateforme dédiée et un support opérationnel. Nous gérons la complexité pour que votre équipe se concentre sur l\'essentiel.',
+      eyebrow: 'Gestion du cycle de vie des contrats',
+      h1a: 'De la page blanche',
+      h1b: 'au contrat signé.',
+      p: 'Une seule plateforme pour rédiger, vérifier, approuver et signer vos contrats - l\'IA s\'occupe de la lecture, votre équipe se concentre sur la décision.',
       btn1: 'Prendre un premier appel',
-      btn2: 'Voir la plateforme',
-      stat1n: '2–4 semaines', stat1l: 'pour les premiers résultats',
+      btn2: 'Voir le fonctionnement',
+      stat1n: '4 étapes', stat1l: 'du début à la signature',
       stat2n: 'EU', stat2l: 'résidence des données',
-      stat3n: 'FR · EN · RO', stat3l: 'équipe multilingue',
+      stat3n: 'Minutes', stat3l: 'et non des semaines, pour approuver',
     },
     why_now: {
-      eyebrow: 'Pourquoi le legal ops, pourquoi maintenant',
-      title: 'Le juridique est le dernier département encore géré par emails et tableurs',
-      sub: 'Toutes les autres fonctions ont été digitalisées. Le juridique, non. Cet écart est désormais un risque.',
+      eyebrow: "Le problème aujourd'hui",
+      title: 'Vos contrats vivent dans des *emails et des pièces jointes* Word',
+      sub: 'Les versions se perdent. Les approbations restent non lues. Le risque passe parce que personne n\'a relu la clause 14.',
       pains: [
         { stat: '65%', label: 'des renouvellements de contrats sont manqués ou retardés faute de suivi automatisé' },
-        { stat: '12h', label: 'perdues par semaine et par juriste sur des tâches administratives que le logiciel peut éliminer' },
-        { stat: '3×', label: 'plus de dépenses en prestataires externes dans les entreprises sans visibilité legal ops' },
+        { stat: '12h', label: 'perdues par semaine à relancer les approbations et relire les mêmes clauses' },
+        { stat: '3×', label: 'plus de temps de signature quand celle-ci reste une étape séparée et déconnectée' },
       ],
-      cta: 'Voir comment nous résolvons ça',
+      cta: 'Voir la solution',
     },
-    packages: {
-      eyebrow: 'Comment nous travaillons',
-      title: 'Deux façons de travailler avec nous',
-      sub: 'Le conseil s\'intègre dans votre stack Microsoft existant. La plateforme est notre propre produit. Choisissez l\'un - ou combinez les deux.',
+    flow: {
+      eyebrow: 'La plateforme',
+      title: 'Un parcours. Quatre étapes. *Zéro email perdu.*',
+      sub: 'Chaque contrat suit le même chemin clair - cliquez sur une étape pour la voir en action.',
     },
-    platform: {
-      eyebrow: 'Notre plateforme',
-      title: 'Six modules. Un seul login. Contrôle total.',
-      sub: 'Vous voyez les résultats, pas les fonctionnalités. Commencez par un module, développez quand vous êtes prêt.',
-      cta: 'En savoir plus sur la plateforme',
+    features: {
+      eyebrow: 'Ce qui est inclus',
+      title: 'Tout ce qu\'il faut pour *faire signer un contrat*',
+      sub: 'Pas de modules annexes, pas d\'outils séparés à assembler.',
     },
     security: {
       eyebrow: 'Protection des données & sécurité IT',
-      title: 'Les équipes juridiques sont auditées. Notre plateforme aussi.',
-      sub: 'Nous avons intégré la sécurité dès le premier jour - pas comme une case à cocher, mais parce que les données de vos clients l\'exigent.',
+      title: 'Vos contrats sont sensibles. *Nous les traitons comme tels.*',
+      sub: 'La sécurité n\'est pas une fonctionnalité ajoutée - c\'est la raison pour laquelle la plateforme est construite ainsi.',
       items: [
-        { Icon: HiOutlineServer, title: 'Déployé dans votre Azure', desc: 'Vos données ne quittent jamais votre infrastructure. La plateforme tourne dans votre propre tenant Azure.' },
-        { Icon: HiOutlineLockClosed, title: 'RGPD by design', desc: 'Résidence des données en EU, accès basé sur les rôles, piste d\'audit complète. Conforme par défaut.' },
-        { Icon: HiOutlineEyeOff, title: 'IA qui reste chez vous', desc: 'L\'assistant IA tourne sur vos données uniquement. Pas d\'entraînement sur vos contrats. Pas de partage avec des tiers.' },
-        { Icon: HiOutlineClipboardCheck, title: 'Prêt pour l\'audit', desc: 'Chaque action journalisée. Chaque approbation tracée. Chaque accès enregistré. Conçu pour les équipes auditées.' },
+        { Icon: HiOutlineServer, title: 'Hébergé en EU', desc: 'Vos documents sont stockés sur une infrastructure européenne, conçue pour le RGPD dès le départ.' },
+        { Icon: HiOutlineLockClosed, title: 'Toujours chiffré', desc: 'En transit et au repos. L\'accès basé sur les rôles garantit que chacun ne voit que ce qu\'il doit voir.' },
+        { Icon: HiOutlineEyeOff, title: 'Une IA qui reste concentrée', desc: 'L\'IA lit le document pour faire son travail. Rien n\'est utilisé pour entraîner des modèles externes.' },
+        { Icon: HiOutlineClipboardCheck, title: 'Prêt pour l\'audit', desc: 'Chaque action journalisée, chaque approbation tracée. Prêt le jour où l\'on demande "qui a approuvé, et quand ?"' },
       ],
     },
     why: {
-      eyebrow: 'Pourquoi Legal Space',
-      title: 'Un partenaire legal ops différent',
+      eyebrow: 'Pourquoi cette plateforme',
+      title: 'Conçue pour s\'adapter à *votre façon de travailler*',
       items: [
-        { Icon: HiOutlineGlobe, title: 'Multilingue par nature', desc: 'Français, anglais, roumain - nous travaillons dans votre langue.' },
-        { Icon: HiOutlineLightningBolt, title: 'Rapide à mettre en œuvre', desc: 'Premiers résultats en semaines, pas en trimestres.' },
-        { Icon: HiOutlineScale, title: 'Juridique + tech + ops', desc: 'Une combinaison rare : compréhension juridique, livraison technologique et exécution opérationnelle.' },
-        { Icon: HiOutlineExclamationCircle, title: 'Honnêtes sur nos limites', desc: 'Nous ne faisons pas le KYC seuls - mais nous nous intégrons avec les spécialistes qui le font.' },
-      ],
-    },
-    how: {
-      eyebrow: 'Notre méthode',
-      title: 'Du premier appel à la pleine opération',
-      steps: [
-        { num: '01', title: 'Découverte', desc: 'Nous cartographions vos processus, points de douleur et priorités lors d\'un audit structuré.' },
-        { num: '02', title: 'Conception', desc: 'Nous proposons la bonne combinaison de conseil, plateforme et services managés pour votre situation.' },
-        { num: '03', title: 'Déploiement', desc: 'Nous déployons rapidement - la plupart des équipes sont opérationnelles en deux à quatre semaines.' },
-        { num: '04', title: 'Opération', desc: 'Nous restons proches - via la plateforme, le support continu ou en tant qu\'équipe legal ops étendue.' },
+        { Icon: HiOutlineCog, title: 'Configurée sur votre flux', desc: 'Besoin d\'une seconde approbation pour les contrats importants ? C\'est un réglage, pas un projet de six mois.' },
+        { Icon: HiOutlineLightningBolt, title: 'Opérationnelle en semaines', desc: 'Pas de marathon d\'achat. La plupart des équipes rédigent leur premier contrat quelques jours après l\'intégration.' },
+        { Icon: HiOutlineGlobe, title: 'Dans votre langue', desc: 'Français, anglais, roumain - la plateforme parle la langue de votre équipe.' },
+        { Icon: HiOutlineExclamationCircle, title: 'Honnêtes sur le périmètre', desc: 'C\'est de la gestion de contrats, faite correctement - pas une suite tentaculaire qui promet de tout faire.' },
       ],
     },
     footer: {
-      tagline: 'Legal operations, conçu pour évoluer.',
+      tagline: 'Des contrats, du brouillon à la signature, sans le chaos.',
       badges: ['Hébergement EU', 'Conforme RGPD', 'Équipe multilingue'],
-      copy: '© 2026 Legal Space',
+      copy: '© 2026',
     },
   },
 };
 
+// ─── ANIMATED WIDGETS — one per flow step ──────────────────────────────────────
+
+function useTypedText(fullText, speed = 28, active) {
+  const [text, setText] = useState('');
+  useEffect(() => {
+    if (!active) { setText(''); return; }
+    let i = 0;
+    setText('');
+    const id = setInterval(() => {
+      i += 1;
+      setText(fullText.slice(0, i));
+      if (i >= fullText.length) clearInterval(id);
+    }, speed);
+    return () => clearInterval(id);
+  }, [fullText, speed, active]);
+  return text;
+}
+
+function GenerateWidget({ active, lang }) {
+  const company = useTypedText('Atlas Robotics SRL', 35, active);
+  const value = useTypedText(lang === 'fr' ? '48 000 €' : '€48,000', 60, active);
+  const term = useTypedText(lang === 'fr' ? '12 mois' : '12 months', 60, active);
+  const labels = lang === 'fr'
+    ? { client: 'Client', value: 'Valeur du contrat', term: 'Durée', doc: 'Contrat_Prestation_v1.docx', generating: 'Génération en cours…' }
+    : { client: 'Client', value: 'Contract value', term: 'Term', doc: 'Services_Agreement_v1.docx', generating: 'Generating…' };
+
+  return (
+    <div className={active ? 'widget widget-generate' : 'widget widget-generate widget--paused'}>
+      <div className="widget-window">
+        <div className="widget-titlebar">
+          <span className="widget-dot widget-dot--red" />
+          <span className="widget-dot widget-dot--yellow" />
+          <span className="widget-dot widget-dot--green" />
+          <span className="widget-filename">{labels.doc}</span>
+        </div>
+        <div className="widget-form">
+          <div className="widget-field">
+            <span className="widget-field-label">{labels.client}</span>
+            <span className="widget-field-value">{company}<span className="widget-caret" /></span>
+          </div>
+          <div className="widget-field">
+            <span className="widget-field-label">{labels.value}</span>
+            <span className="widget-field-value">{value}<span className="widget-caret" /></span>
+          </div>
+          <div className="widget-field">
+            <span className="widget-field-label">{labels.term}</span>
+            <span className="widget-field-value">{term}<span className="widget-caret" /></span>
+          </div>
+        </div>
+        <div className="widget-doc-preview">
+          <div className="widget-doc-line" style={{ width: '88%', animationDelay: '0.1s' }} />
+          <div className="widget-doc-line" style={{ width: '94%', animationDelay: '0.25s' }} />
+          <div className="widget-doc-line" style={{ width: '70%', animationDelay: '0.4s' }} />
+          <div className="widget-doc-line widget-doc-line--gen" style={{ animationDelay: '0.55s' }}>
+            <span className="widget-spinner" />{labels.generating}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ReviewWidget({ active, lang }) {
+  const [score, setScore] = useState(0);
+  const [flagsShown, setFlagsShown] = useState(0);
+  const flags = useMemo(() => (
+    lang === 'fr'
+      ? [
+          { sev: 'high', text: 'Clause de résiliation manquante' },
+          { sev: 'mid', text: 'Pénalité de retard non chiffrée' },
+          { sev: 'low', text: 'Juridiction non précisée' },
+        ]
+      : [
+          { sev: 'high', text: 'Missing termination clause' },
+          { sev: 'mid', text: 'Late-payment penalty unspecified' },
+          { sev: 'low', text: 'Governing jurisdiction not stated' },
+        ]
+  ), [lang]);
+  const labelRisk = lang === 'fr' ? 'Score de risque' : 'Risk score';
+
+  useEffect(() => {
+    if (!active) { setScore(0); setFlagsShown(0); return; }
+    const target = 64;
+    let cur = 0;
+    const scoreId = setInterval(() => {
+      cur += 4;
+      setScore(Math.min(cur, target));
+      if (cur >= target) clearInterval(scoreId);
+    }, 30);
+    const flagTimers = flags.map((_, i) => setTimeout(() => setFlagsShown(i + 1), 600 + i * 380));
+    return () => { clearInterval(scoreId); flagTimers.forEach(clearTimeout); };
+  }, [active, flags]);
+
+  const circumference = 2 * Math.PI * 42;
+  const offset = circumference - (score / 100) * circumference;
+
+  return (
+    <div className={active ? 'widget widget-review' : 'widget widget-review widget--paused'}>
+      <div className="widget-review-top">
+        <svg width="100" height="100" viewBox="0 0 100 100" className="widget-gauge">
+          <circle cx="50" cy="50" r="42" className="widget-gauge-track" />
+          <circle
+            cx="50" cy="50" r="42"
+            className="widget-gauge-fill"
+            strokeDasharray={circumference}
+            strokeDashoffset={offset}
+          />
+          <text x="50" y="46" className="widget-gauge-num">{score}</text>
+          <text x="50" y="63" className="widget-gauge-label">/100</text>
+        </svg>
+        <div className="widget-review-label">{labelRisk}</div>
+      </div>
+      <div className="widget-flags">
+        {flags.map((f, i) => (
+          <div key={i} className={i < flagsShown ? `widget-flag widget-flag--${f.sev} widget-flag--in` : `widget-flag widget-flag--${f.sev}`}>
+            <span className="widget-flag-dot" />
+            <span>{f.text}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ApproveWidget({ active, lang }) {
+  const [phase, setPhase] = useState(0); // 0 idle, 1 cursor moving, 2 clicked/approved
+  const labels = lang === 'fr'
+    ? { subject: 'Approbation requise — Contrat_Prestation_v1', from: 'plateforme@contrats.eu', summary: 'Résumé : prestation de services, 12 mois, 48 000 €. 1 risque moyen détecté.', approve: 'Approuver', approved: 'Approuvé' }
+    : { subject: 'Approval needed — Services_Agreement_v1', from: 'platform@contracts.eu', summary: 'Summary: services agreement, 12 months, €48,000. 1 medium risk flagged.', approve: 'Approve', approved: 'Approved' };
+
+  useEffect(() => {
+    if (!active) { setPhase(0); return; }
+    const t1 = setTimeout(() => setPhase(1), 500);
+    const t2 = setTimeout(() => setPhase(2), 1500);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, [active]);
+
+  return (
+    <div className={active ? 'widget widget-approve' : 'widget widget-approve widget--paused'}>
+      <div className="widget-window">
+        <div className="widget-titlebar">
+          <span className="widget-dot widget-dot--red" />
+          <span className="widget-dot widget-dot--yellow" />
+          <span className="widget-dot widget-dot--green" />
+          <span className="widget-filename">{labels.from}</span>
+        </div>
+        <div className="widget-email">
+          <div className="widget-email-subject">{labels.subject}</div>
+          <p className="widget-email-summary">{labels.summary}</p>
+          <div className="widget-email-btn-row">
+            <button className={phase >= 2 ? 'widget-approve-btn widget-approve-btn--done' : 'widget-approve-btn'} tabIndex={-1}>
+              {phase >= 2 ? (
+                <>
+                  <svg className="widget-check" viewBox="0 0 24 24" width="16" height="16">
+                    <path d="M4 12l5 5L20 6" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  {labels.approved}
+                </>
+              ) : labels.approve}
+            </button>
+          </div>
+          <div className={phase === 1 ? 'widget-cursor widget-cursor--move' : phase >= 2 ? 'widget-cursor widget-cursor--click' : 'widget-cursor'}>
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none">
+              <path d="M5 3l14 8-6 1.5L11 19z" fill="#0f1f3d" stroke="white" strokeWidth="1" />
+            </svg>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SignWidget({ active, lang }) {
+  const [stamped, setStamped] = useState(false);
+  useEffect(() => {
+    if (!active) { setStamped(false); return; }
+    const t = setTimeout(() => setStamped(true), 1500);
+    return () => clearTimeout(t);
+  }, [active]);
+  const labels = lang === 'fr'
+    ? { doc: 'Contrat_Prestation_FINAL.pdf', name: 'Alexandra Dubois', signed: 'SIGNÉ' }
+    : { doc: 'Services_Agreement_FINAL.pdf', name: 'Alexandra Dubois', signed: 'SIGNED' };
+
+  return (
+    <div className={active ? 'widget widget-sign' : 'widget widget-sign widget--paused'}>
+      <div className="widget-window widget-window--paper">
+        <div className="widget-titlebar">
+          <span className="widget-dot widget-dot--red" />
+          <span className="widget-dot widget-dot--yellow" />
+          <span className="widget-dot widget-dot--green" />
+          <span className="widget-filename">{labels.doc}</span>
+        </div>
+        <div className="widget-paper">
+          <div className="widget-doc-line" style={{ width: '92%' }} />
+          <div className="widget-doc-line" style={{ width: '80%' }} />
+          <div className="widget-doc-line" style={{ width: '86%' }} />
+          <div className="widget-sig-block">
+            <svg viewBox="0 0 220 70" className="widget-sig-svg" key={active ? 'on' : 'off'}>
+              <path
+                d="M10,50 C20,15 30,55 42,30 C50,15 55,45 65,35 C75,25 80,50 95,30 C105,18 115,45 130,32 C140,24 150,40 165,28 C175,20 185,38 205,22"
+                fill="none" stroke="#27509b" strokeWidth="2.5" strokeLinecap="round"
+                className={active ? 'widget-sig-path widget-sig-path--draw' : 'widget-sig-path'}
+              />
+            </svg>
+            <span className="widget-sig-name">{labels.name}</span>
+          </div>
+          <div className={stamped ? 'widget-stamp widget-stamp--in' : 'widget-stamp'}>
+            {labels.signed}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FlowStackCard({ step, lang }) {
+  const ref = useRef(null);
+  const [inFocus, setInFocus] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => setInFocus(entry.isIntersecting),
+      { threshold: 0.55 }
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+
+  return (
+    <div className="stack-card-inner" ref={ref}>
+      <div className="stack-card-text">
+        <div className="stack-card-icon">
+          <step.Icon size={26} />
+        </div>
+        <span className="stack-card-num">{step.num}</span>
+        <div className="flow-stage-verbs">
+          <span className="flow-stage-verb">{step.verb}</span>
+          <HiOutlineArrowRight size={16} color="#9fb3d6" />
+          <span className="flow-stage-result">{step.result}</span>
+        </div>
+        <p className="flow-stage-desc">{step.desc}</p>
+      </div>
+      <div className="flow-stage-widget">
+        <FlowWidget stepKey={step.key} active={inFocus} lang={lang} />
+      </div>
+    </div>
+  );
+}
+
+function FlowWidget({ stepKey, active, lang }) {
+  switch (stepKey) {
+    case 'generate': return <GenerateWidget active={active} lang={lang} />;
+    case 'review': return <ReviewWidget active={active} lang={lang} />;
+    case 'approve': return <ApproveWidget active={active} lang={lang} />;
+    case 'sign': return <SignWidget active={active} lang={lang} />;
+    default: return null;
+  }
+}
+
 // ─── APP ──────────────────────────────────────────────────────────────────────
-export default function App() {
+function AppInner() {
   const [lang, setLang] = useState('en');
   const t = content[lang];
-  const modules = platformModules[lang];
-  const svcs = services[lang];
-  const [activeStep, setActiveStep] = useState(0);
-  const [userInteracted, setUserInteracted] = useState(false);
+  const feats = features[lang];
+  const steps = flowSteps[lang];
 
   React.useEffect(() => {
     document.documentElement.lang = lang;
   }, [lang]);
 
-  React.useEffect(() => {
-    if (userInteracted) return;
-    const interval = setInterval(() => {
-      setActiveStep(prev => (prev + 1) % 4);
-    }, 1800);
-    return () => clearInterval(interval);
-  }, [userInteracted]);
+  const heroProgress = useHeroScrollProgress();
+  const [flowRef, flowInView] = useInView(0.2);
+  const [whyRef, whyInView] = useInView(0.2);
+  const [securityIndex, setSecurityIndex] = useState(0);
+  const securityItems = t.security.items;
 
-  const handleStepClick = (i) => {
-    setActiveStep(i);
-    setUserInteracted(true);
-  };
+  useEffect(() => {
+    const id = setInterval(() => {
+      setSecurityIndex((i) => (i + 1) % securityItems.length);
+    }, 4200);
+    return () => clearInterval(id);
+  }, [securityItems.length]);
 
   return (
     <div className="App">
 
       {/* ── NAV ── */}
       <nav className="nav">
-        <img src={logo} alt="Legal Space" className="nav-logo" />
+        <span className="nav-wordmark">Test</span>
         <ul className="nav-links">
-          <li><a href="#why-now">{t.nav.services}</a></li>
-          <li><a href="#platform">{t.nav.platform}</a></li>
-          <li><a href="#security">{t.nav.about}</a></li>
+          <li><NavScrollLink targetId="#flow">{t.nav.flow}</NavScrollLink></li>
+          <li><NavScrollLink targetId="#features">{t.nav.features}</NavScrollLink></li>
+          <li><NavScrollLink targetId="#security">{t.nav.security}</NavScrollLink></li>
         </ul>
         <div className="nav-right">
           <div className="lang-toggle">
             <button className={lang === 'en' ? 'lang-btn active' : 'lang-btn'} onClick={() => setLang('en')}>EN</button>
             <button className={lang === 'fr' ? 'lang-btn active' : 'lang-btn'} onClick={() => setLang('fr')}>FR</button>
           </div>
-          <a href="#contact" className="btn-primary btn-sm">{t.nav.cta}</a>
+          <NavScrollLink targetId="#contact" className="btn-primary btn-sm">{t.nav.cta}</NavScrollLink>
         </div>
       </nav>
 
       {/* ── HERO ── */}
       <section className="hero">
-        <div className="hero-bg" />
-        <div className="hero-hex-pattern" />
-        <div className="hero-content">
-          <div className="hero-badge">
-            <span className="hero-badge-dot" />
-            {t.hero.eyebrow}
+        <div className="hero-curve hero-curve--top" />
+        <div className="hero-curve hero-curve--bottom" />
+        <div className="hero-content hero-content--center">
+
+          <div
+            className="hero-sphere-wrap"
+            style={{
+              transform: `translateY(${heroProgress * -40}px) scale(${1 - heroProgress * 0.45})`,
+              opacity: 1 - heroProgress * 0.5,
+            }}
+          >
+            <div className="hero-sphere">
+              <div className="hero-sphere-glow" />
+              <GlobeCanvas maxSize={200} />
+              <div className="hero-sphere-spark" style={{ top: '22%', left: '28%' }} />
+              <div className="hero-sphere-spark" style={{ top: '58%', left: '64%' }} />
+              <div className="hero-sphere-spark" style={{ top: '40%', left: '70%' }} />
+            </div>
           </div>
-          <h1>
-            {t.hero.h1a}<br />
-            <em>{t.hero.h1b}</em>
-          </h1>
-          <p>{t.hero.p}</p>
-          <div className="hero-actions">
-            <a href="#contact" className="btn-primary">
+
+          <BlurText
+            text={`${t.hero.h1a} *${t.hero.h1b}*`}
+            as="h1"
+            className="hero-h1-center"
+            animateBy="words"
+            direction="top"
+            delay={90}
+            stepDuration={0.32}
+          />
+          <p className="hero-p-center">{t.hero.p}</p>
+          <div className="hero-actions hero-actions--center">
+            <NavScrollLink targetId="#contact" className="btn-primary">
               {t.hero.btn1} <HiOutlineArrowRight style={{ display: 'inline', verticalAlign: 'middle', marginLeft: 4 }} />
-            </a>
-            <a href="#platform" className="btn-outline">{t.hero.btn2}</a>
+            </NavScrollLink>
+            <NavScrollLink targetId="#flow" className="btn-outline">{t.hero.btn2}</NavScrollLink>
           </div>
-          <div className="hero-stats">
+          <div className="hero-stats hero-stats--center">
             <div>
               <div className="hero-stat-num">{t.hero.stat1n}</div>
               <div className="hero-stat-label">{t.hero.stat1l}</div>
@@ -352,17 +698,14 @@ export default function App() {
             </div>
           </div>
         </div>
-        <div className="hero-visual">
-          <img src={logo} alt="Legal Space" className="hero-logo-big" />
-        </div>
       </section>
 
-      {/* ── WHY NOW (NEW - intro categorie) ── */}
+      {/* ── WHY NOW ── */}
       <section className="why-now-section" id="why-now">
         <div className="why-now-inner">
           <div className="why-now-header">
             <span className="section-eyebrow">{t.why_now.eyebrow}</span>
-            <h2 className="section-title">{t.why_now.title}</h2>
+            <EmTitle text={t.why_now.title} className="section-title" blur />
             <p className="section-sub">{t.why_now.sub}</p>
           </div>
           <div className="pain-stats">
@@ -374,138 +717,131 @@ export default function App() {
             ))}
           </div>
           <div style={{ textAlign: 'center', marginTop: '2.5rem' }}>
-            <a href="#packages" className="btn-primary">
+            <NavScrollLink targetId="#flow" className="btn-primary">
               {t.why_now.cta} <HiOutlineArrowRight style={{ display: 'inline', verticalAlign: 'middle', marginLeft: 4 }} />
-            </a>
+            </NavScrollLink>
           </div>
         </div>
       </section>
 
-      {/* ── 2 SERVICES ── */}
-      <section className="packages-section" id="packages">
-        <div className="section-header">
-          <span className="section-eyebrow">{t.packages.eyebrow}</span>
-          <h2 className="section-title">{t.packages.title}</h2>
-          <p className="section-sub">{t.packages.sub}</p>
-        </div>
-        <div className="services-two-grid">
-          {svcs.map((svc, i) => (
-            <div className={svc.featured ? 'svc-card svc-card--featured' : 'svc-card'} key={i}>
-              <span className="svc-tag">{svc.tag}</span>
-              <h3 className="svc-name">{svc.name}</h3>
-              <p className="svc-tagline">{svc.tagline}</p>
-              <p className="svc-desc">{svc.desc}</p>
-              <ul className="svc-bullets">
-                {svc.bullets.map((b, j) => (
-                  <li key={j}>
-                    <HiOutlineCheckCircle size={14} color={svc.featured ? 'rgba(255,255,255,0.7)' : '#27509b'} />
-                    <span>{b}</span>
-                  </li>
-                ))}
-              </ul>
-              <a href="#contact" className={svc.featured ? 'svc-cta svc-cta--featured' : 'svc-cta'}>
-                {svc.cta} <HiOutlineArrowRight size={14} style={{ display: 'inline', verticalAlign: 'middle', marginLeft: 4 }} />
-              </a>
-            </div>
-          ))}
+      {/* ── THE FLOW (signature element) ── */}
+      <section className="flow-section" id="flow" ref={flowRef}>
+        <div className={flowInView ? 'flow-inner flow-inner--revealed' : 'flow-inner'}>
+          <div className="section-header">
+            <span className="section-eyebrow">{t.flow.eyebrow}</span>
+            <EmTitle text={t.flow.title} className="section-title" blur />
+            <p className="section-sub">{t.flow.sub}</p>
+          </div>
+
+          <ScrollStack
+            itemDistance={90}
+            itemScale={0.035}
+            itemStackDistance={26}
+            stackPosition="18%"
+            scaleEndPosition="8%"
+            baseScale={0.86}
+            blurAmount={1.1}
+            useWindowScroll={true}
+          >
+            {steps.map((s) => (
+              <ScrollStackItem key={s.key}>
+                <FlowStackCard step={s} lang={lang} />
+              </ScrollStackItem>
+            ))}
+          </ScrollStack>
         </div>
       </section>
 
-      {/* ── PLATFORM MODULES (outcomes, not features) ── */}
-      <section className="platform-section" id="platform">
+      {/* ── FEATURES ── */}
+      <section className="features-section" id="features">
         <div className="section-header">
-          <span className="section-eyebrow">{t.platform.eyebrow}</span>
-          <h2 className="section-title">{t.platform.title}</h2>
-          <p className="section-sub">{t.platform.sub}</p>
+          <span className="section-eyebrow">{t.features.eyebrow}</span>
+          <EmTitle text={t.features.title} className="section-title" blur />
+          <p className="section-sub">{t.features.sub}</p>
         </div>
-        <div className="platform-grid">
-          {modules.map((m, i) => (
-            <div className="platform-card" key={i}>
-              <div className="platform-icon-wrap">
-                <m.Icon size={22} color="#27509b" />
-              </div>
-              <div className="platform-card-text">
-                <h3>{m.name}</h3>
-                <p>{m.outcome}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-        <div style={{ textAlign: 'center', marginTop: '2.5rem' }}>
-          <a href="#contact" className="btn-outline">
-            {t.platform.cta} <HiOutlineArrowRight style={{ display: 'inline', verticalAlign: 'middle', marginLeft: 4 }} />
-          </a>
-        </div>
+        <MagicBento
+          cardData={feats.map((f, i) => ({
+            Icon: f.Icon,
+            label: lang === 'en' ? `Step ${i + 1}` : `Étape ${i + 1}`,
+            title: <EmTitle text={f.name} as="span" />,
+            description: f.outcome,
+          }))}
+          textAutoHide={true}
+          enableStars={true}
+          enableSpotlight={true}
+          enableBorderGlow={true}
+          enableTilt={true}
+          enableMagnetism={true}
+          clickEffect={true}
+          spotlightRadius={280}
+          particleCount={8}
+          glowColor="0, 33, 142"
+        />
       </section>
 
-      {/* ── SECURITY (NEW - secțiune proprie, sus, nu doar footer badges) ── */}
+      {/* ── SECURITY ── */}
       <section className="security-section" id="security">
         <div className="security-inner">
           <div className="section-header">
             <span className="section-eyebrow">{t.security.eyebrow}</span>
-            <h2 className="section-title">{t.security.title}</h2>
+            <EmTitle text={t.security.title} className="section-title" blur />
             <p className="section-sub">{t.security.sub}</p>
           </div>
-          <div className="security-grid">
-            {t.security.items.map((s, i) => (
-              <div className="security-card" key={i}>
-                <div className="security-icon-wrap">
-                  <s.Icon size={22} color="#27509b" />
-                </div>
-                <h3>{s.title}</h3>
-                <p>{s.desc}</p>
+          <div className="security-carousel">
+            <div className="security-track-wrap">
+              <div
+                className="security-track"
+                style={{ transform: `translateX(calc(50% - ${securityIndex * 100}% - 50%))` }}
+              >
+                {securityItems.map((s, i) => {
+                  const offset = i - securityIndex;
+                  return (
+                    <div
+                      className={offset === 0 ? 'security-slide security-slide--active' : 'security-slide'}
+                      key={i}
+                    >
+                      <div className="security-card">
+                        <div className="security-icon-wrap">
+                          <s.Icon size={24} color="white" />
+                        </div>
+                        <h3>{s.title}</h3>
+                        <p>{s.desc}</p>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-            ))}
+            </div>
+            <div className="security-dots">
+              {securityItems.map((_, i) => (
+                <button
+                  key={i}
+                  className={i === securityIndex ? 'security-dot security-dot--active' : 'security-dot'}
+                  onClick={() => setSecurityIndex(i)}
+                  aria-label={`slide-${i + 1}`}
+                />
+              ))}
+            </div>
           </div>
         </div>
       </section>
 
       {/* ── WHY US ── */}
-      <section className="why-section" id="about">
-        <div className="why-inner">
+      <section className="why-section" id="about" ref={whyRef}>
+        <div className={whyInView ? 'why-inner why-inner--revealed' : 'why-inner'}>
           <div className="why-left">
             <span className="section-eyebrow">{t.why.eyebrow}</span>
-            <h2 className="section-title" style={{ textAlign: 'left' }}>{t.why.title}</h2>
+            <EmTitle text={t.why.title} className="section-title section-title--left" blur />
           </div>
           <div className="why-grid">
             {t.why.items.map((w, i) => (
-              <div className="why-card" key={i}>
+              <div className="why-card" key={i} style={{ transitionDelay: `${i * 90}ms` }}>
+                <span className="why-card-num">{String(i + 1).padStart(2, '0')}</span>
                 <div className="why-icon-wrap">
-                  <w.Icon size={22} color="#27509b" />
+                  <w.Icon size={22} />
                 </div>
                 <h3>{w.title}</h3>
                 <p>{w.desc}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── HOW ── */}
-      <section className="how-section">
-        <div className="how-inner">
-          <div className="section-header">
-            <span className="section-eyebrow">{t.how.eyebrow}</span>
-            <h2 className="section-title">{t.how.title}</h2>
-          </div>
-          <div className="how-progress-bar">
-            <div className="how-progress-fill" style={{ width: `${((activeStep + 1) / 4) * 100}%` }} />
-          </div>
-          <div className="how-steps">
-            {t.how.steps.map((s, i) => (
-              <div
-                className={i <= activeStep ? 'how-step active' : 'how-step'}
-                key={i}
-                onClick={() => handleStepClick(i)}
-              >
-                <div className="how-step-num">{s.num}</div>
-                <h3>{s.title}</h3>
-                <p>{s.desc}</p>
-                {i < t.how.steps.length - 1 && (
-                  <div className="how-step-arrow">
-                    <HiOutlineArrowRight size={18} color={i < activeStep ? '#27509b' : '#d0ddf0'} />
-                  </div>
-                )}
               </div>
             ))}
           </div>
@@ -519,13 +855,13 @@ export default function App() {
           <div>
             <h2>{lang === 'en' ? 'Ready to talk?' : 'Prêt à discuter ?'}</h2>
             <p>{lang === 'en'
-              ? 'Book a 30-minute discovery call. No pitch, just a conversation about where you are and what would actually help.'
-              : 'Réservez un appel de découverte de 30 minutes. Pas de discours commercial - juste une conversation sur votre situation.'
+              ? 'Book a 30-minute discovery call. No pitch, just a conversation about your contracts and what would actually help.'
+              : 'Réservez un appel de découverte de 30 minutes. Pas de discours commercial - juste une conversation sur vos contrats.'
             }</p>
           </div>
-          <a href="mailto:contact@legalspace.eu" className="btn-white">
+          <Link to="/book-a-call" className="btn-white">
             {t.nav.cta} <HiOutlineArrowRight style={{ display: 'inline', verticalAlign: 'middle', marginLeft: 4 }} />
-          </a>
+          </Link>
         </div>
       </section>
 
@@ -533,7 +869,7 @@ export default function App() {
       <footer className="footer" id="footer">
         <div className="footer-top">
           <div>
-            <img src={logo} alt="Legal Space" className="footer-logo" />
+            <span className="footer-wordmark">Test</span>
             <p className="footer-tagline">{t.footer.tagline}</p>
           </div>
           <div className="footer-badges">
@@ -552,5 +888,30 @@ export default function App() {
       </footer>
 
     </div>
+  );
+}
+
+// LenisProvider exposes the shared Lenis context — ScrollStack creates the
+// actual Lenis instance (useWindowScroll=true) and registers it here via
+// registerLenis, so NavScrollLink (scrollTo) can drive the same smooth-scroll
+// engine from outside ScrollStack. Scoped only to the homepage route — the
+// booking form page has no smooth-scroll needs, so it doesn't carry that
+// overhead.
+export default function App() {
+  return (
+    <BrowserRouter>
+      <Switch>
+        <Route
+          exact
+          path="/"
+          render={() => (
+            <LenisProvider>
+              <AppInner />
+            </LenisProvider>
+          )}
+        />
+        <Route path="/book-a-call" component={BookACall} />
+      </Switch>
+    </BrowserRouter>
   );
 }
