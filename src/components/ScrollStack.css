@@ -35,21 +35,3 @@
   width: 100%;
   height: 1px;
 }
-
-/* ── RESPONSIVE ─────────────────────────────────────────────────────────
-   padding-bottom de 14rem (224px) era fix, indiferent de breakpoint — pe
-   mobil, unde cardurile sunt mai mici (min-height 22rem rămâne disproporțio-
-   nat de generos față de conținutul real) și layout-ul de dedesubt (secțiunea
-   Features, al cărei grid trece de la 2 la 1 coloană sub propriul breakpoint)
-   crește brusc în înălțime, acel padding fix contribuia la un calcul greșit
-   al pinEnd în ScrollStack.jsx — ultimul card rămânea "pinned" prea mult,
-   suprapunându-se vizual peste titlul secțiunii care vine imediat după. */
-@media (max-width: 768px) {
-  .scroll-stack-inner {
-    padding: 4vh 0 6rem;
-  }
-  .scroll-stack-card {
-    min-height: 18rem;
-    padding: 1.85rem;
-  }
-}

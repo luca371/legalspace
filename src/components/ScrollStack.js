@@ -126,22 +126,13 @@ const ScrollStack = ({
         blur = Math.max(0, depthInStack * blurAmount);
       }
 
-      // translateY tracks scrollTop continuously once the card enters its
-      // pin zone, with NO freeze point at the far end. Earlier, once
-      // scrollTop passed pinEnd, translateY was frozen at the value computed
-      // exactly at pinEnd and held there forever — but the card never
-      // actually leaves normal document flow (it's moved purely via
-      // transform, not position:sticky), so the rest of the page — including
-      // whatever section comes right after this one — kept scrolling
-      // normally underneath/behind it. The frozen card and the next
-      // section's real position would visually coincide for a stretch of
-      // scroll, which is exactly the overlap seen on mobile. Fix: once
-      // scrollTop >= pinStart, keep tracking it 1:1 with no upper bound, so
-      // the card scrolls away at the same rate as everything else instead of
-      // hanging in place.
       let translateY = 0;
-      if (scrollTop >= pinStart) {
+      const isPinned = scrollTop >= pinStart && scrollTop <= pinEnd;
+
+      if (isPinned) {
         translateY = scrollTop - cardTop + stackPositionPx + itemStackDistance * i;
+      } else if (scrollTop > pinEnd) {
+        translateY = pinEnd - cardTop + stackPositionPx + itemStackDistance * i;
       }
 
       // Fix: round to whole pixels, not 2 decimals. Sub-pixel translateY values
@@ -297,28 +288,6 @@ const ScrollStack = ({
       updateCardTransforms();
     });
 
-    // Recompute again once web fonts finish loading, and once more after a
-    // short delay — on first mobile load, sections BELOW the stack (e.g.
-    // Features' card-grid, which switches from 2 columns to 1 column under
-    // a separate breakpoint) can still be settling their height when the
-    // first measurement runs. .scroll-stack-end's position depends on that
-    // total page height, so a stale reading here makes pinEnd wrong — the
-    // last card stays pinned too long and visibly overlaps the section
-    // rendered right after it. window.resize alone doesn't catch this,
-    // since the viewport itself never changes size on a phone's initial
-    // load.
-    let settleTimeoutId = null;
-    if (document.fonts?.ready) {
-      document.fonts.ready.then(() => {
-        recomputeOffsets();
-        updateCardTransforms();
-      });
-    }
-    settleTimeoutId = setTimeout(() => {
-      recomputeOffsets();
-      updateCardTransforms();
-    }, 600);
-
     const handleResize = () => {
       recomputeOffsets();
       updateCardTransforms();
@@ -326,7 +295,6 @@ const ScrollStack = ({
     window.addEventListener('resize', handleResize);
 
     return () => {
-      if (settleTimeoutId) clearTimeout(settleTimeoutId);
       window.removeEventListener('resize', handleResize);
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
