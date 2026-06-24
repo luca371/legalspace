@@ -203,7 +203,7 @@ a:focus-visible, button:focus-visible {
 .why-now-header .section-title { max-width: 720px; margin: 0 auto 0.75rem; }
 .pain-stats {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 1.5rem;
 }
 .pain-card {
@@ -336,6 +336,44 @@ a:focus-visible, button:focus-visible {
 }
 .widget--paused .widget-caret { animation-play-state: paused; }
 @keyframes caretBlink { 50% { opacity: 0; } }
+/* ── CPQ mini-configurator (in GenerateWidget) ── */
+.widget-cpq-tag {
+  margin-left: auto;
+  font-size: 9px; font-weight: 700; letter-spacing: 0.6px;
+  color: var(--blue-glow);
+  background: rgba(62, 102, 234, 0.18);
+  border: 1px solid rgba(62, 102, 234, 0.4);
+  border-radius: 5px;
+  padding: 2px 6px;
+}
+.widget-cpq-lines {
+  padding: 4px 18px 0; display: flex; flex-direction: column; gap: 6px;
+}
+.widget-cpq-line {
+  display: flex; align-items: baseline; gap: 8px;
+  font-size: 11.5px; color: var(--text-onBlue-mid);
+  opacity: 0; transform: translateX(-6px);
+  animation: cpqLineIn 0.35s ease forwards;
+}
+@keyframes cpqLineIn { to { opacity: 1; transform: translateX(0); } }
+.widget-cpq-line-name { flex: 1; }
+.widget-cpq-line-qty { color: var(--text-onBlue-muted); font-size: 10.5px; }
+.widget-cpq-line-amount { font-weight: 500; color: var(--text-onBlue); min-width: 64px; text-align: right; }
+.widget-cpq-total {
+  display: flex; align-items: center; justify-content: space-between;
+  margin: 8px 18px 0; padding-top: 8px;
+  border-top: 1px dashed rgba(255,255,255,0.16);
+  font-size: 12px; font-weight: 600; color: var(--text-onBlue);
+}
+.widget-cpq-total-amount { font-family: 'Playfair Display', serif; font-size: 16px; color: var(--blue-glow); }
+.widget-cpq-generating {
+  margin: 10px 18px 16px; padding-top: 10px;
+  border-top: 1px solid rgba(255,255,255,0.1);
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; color: var(--blue-glow); font-weight: 500;
+  opacity: 0; animation: lineGrow 0.4s ease forwards;
+}
+
 .widget-doc-preview { padding: 14px 18px 18px; border-top: 1px solid rgba(255,255,255,0.1); margin-top: 6px; display: flex; flex-direction: column; gap: 7px; }
 .widget-doc-line {
   height: 6px; border-radius: 3px; background: rgba(255,255,255,0.14);

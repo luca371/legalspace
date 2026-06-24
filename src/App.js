@@ -126,8 +126,8 @@ const flowSteps = {
   en: [
     {
       num: '01', key: 'generate', title: 'Generate',
-      verb: 'Fill a form.', result: 'Get a contract.',
-      desc: 'Pick a template, complete a short form with the deal details, and the contract drafts itself - clauses, names, and figures already in place.',
+      verb: 'Configure the deal.', result: 'Get a contract.',
+      desc: 'Built-in CPQ lets you configure products, quantities, and pricing - no more back-and-forth on a quote before the contract even exists. The document drafts itself from that configuration, clauses and figures already in place.',
       Icon: HiOutlineDocumentText,
     },
     {
@@ -152,8 +152,8 @@ const flowSteps = {
   fr: [
     {
       num: '01', key: 'generate', title: 'Générer',
-      verb: 'Remplissez un formulaire.', result: 'Obtenez un contrat.',
-      desc: 'Choisissez un modèle, complétez un court formulaire avec les détails - le contrat se rédige seul, clauses, noms et montants déjà en place.',
+      verb: 'Configurez l\'offre.', result: 'Obtenez un contrat.',
+      desc: 'Le CPQ intégré permet de configurer produits, quantités et tarifs - plus d\'allers-retours sur un devis avant même que le contrat existe. Le document se rédige depuis cette configuration, clauses et montants déjà en place.',
       Icon: HiOutlineDocumentText,
     },
     {
@@ -183,7 +183,7 @@ const features = {
     {
       Icon: HiOutlineDocumentText, name: 'Drafting *made effortless*',
       outcome: 'Build once, reuse for every NDA, every services agreement, every renewal.',
-      bullets: ['Reusable template builder', 'Live editor, built in', 'Word Online for M365 teams'],
+      bullets: ['Built-in CPQ for pricing & quotes', 'Reusable template builder', 'Word Online for M365 teams'],
     },
     {
       Icon: HiOutlineSparkles, name: '*AI-powered* risk review',
@@ -205,7 +205,7 @@ const features = {
     {
       Icon: HiOutlineDocumentText, name: 'La rédaction *simplifiée*',
       outcome: 'Créez une fois, réutilisez pour chaque NDA, chaque prestation, chaque renouvellement.',
-      bullets: ['Modèles réutilisables', 'Édition en direct intégrée', 'Word Online pour les équipes M365'],
+      bullets: ['CPQ intégré pour devis & tarifs', 'Modèles réutilisables', 'Word Online pour les équipes M365'],
     },
     {
       Icon: HiOutlineSparkles, name: 'Analyse des risques *par IA*',
@@ -248,6 +248,7 @@ const content = {
         { stat: '65%', label: 'of contract renewals are missed or delayed due to manual tracking' },
         { stat: '12h', label: 'lost per week chasing approvals and re-reading the same clauses' },
         { stat: '3×', label: 'longer signing cycles when signature is a separate, disconnected step' },
+        { stat: 'Manual', label: 'pricing means quotes and contracts routinely disagree on the numbers' },
       ],
       cta: 'See the fix',
     },
@@ -309,6 +310,7 @@ const content = {
         { stat: '65%', label: 'des renouvellements de contrats sont manqués ou retardés faute de suivi automatisé' },
         { stat: '12h', label: 'perdues par semaine à relancer les approbations et relire les mêmes clauses' },
         { stat: '3×', label: 'plus de temps de signature quand celle-ci reste une étape séparée et déconnectée' },
+        { stat: 'Manuel', label: 'le tarif saisi à la main finit souvent par ne plus correspondre au contrat' },
       ],
       cta: 'Voir la solution',
     },
@@ -369,13 +371,52 @@ function useTypedText(fullText, speed = 28, active) {
   return text;
 }
 
+function useCountUp(target, active, duration = 700) {
+  const [value, setValue] = useState(0);
+  useEffect(() => {
+    if (!active) { setValue(0); return; }
+    const start = performance.now();
+    let raf;
+    const tick = (now) => {
+      const t = Math.min((now - start) / duration, 1);
+      setValue(Math.round(target * t));
+      if (t < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [target, active, duration]);
+  return value;
+}
+
 function GenerateWidget({ active, lang }) {
   const company = useTypedText('Atlas Robotics SRL', 35, active);
-  const value = useTypedText(lang === 'fr' ? '48 000 €' : '€48,000', 60, active);
-  const term = useTypedText(lang === 'fr' ? '12 mois' : '12 months', 60, active);
+
+  // Mini-configurator CPQ : lignes produit -> quantité × prix unitaire,
+  // total calculé automatiquement. Le contrat ne part plus d'un montant
+  // saisi à la main, mais d'une configuration réelle de l'offre.
+  const lineItems = lang === 'fr'
+    ? [
+        { name: 'Licence plateforme', qty: 25, unit: 1200 },
+        { name: 'Implémentation', qty: 1, unit: 8000 },
+        { name: 'Support prioritaire', qty: 12, unit: 350 },
+      ]
+    : [
+        { name: 'Platform license', qty: 25, unit: 1200 },
+        { name: 'Implementation', qty: 1, unit: 8000 },
+        { name: 'Priority support', qty: 12, unit: 350 },
+      ];
+
+  const total = lineItems.reduce((sum, li) => sum + li.qty * li.unit, 0);
+  const totalDisplay = useCountUp(total, active, 900);
+  const formatCurrency = (n) =>
+    lang === 'fr'
+      ? `${n.toLocaleString('fr-FR')} €`
+      : `€${n.toLocaleString('en-US')}`;
+
   const labels = lang === 'fr'
-    ? { client: 'Client', value: 'Valeur du contrat', term: 'Durée', doc: 'Contrat_Prestation_v1.docx', generating: 'Génération en cours…' }
-    : { client: 'Client', value: 'Contract value', term: 'Term', doc: 'Services_Agreement_v1.docx', generating: 'Generating…' };
+    ? { client: 'Client', doc: 'Devis_CPQ_v1.docx', generating: 'Génération du contrat…', total: 'Total', cpqTag: 'CPQ' }
+    : { client: 'Client', doc: 'CPQ_Quote_v1.docx', generating: 'Generating contract…', total: 'Total', cpqTag: 'CPQ' };
+  const cpqTooltip = lang === 'fr' ? 'Configuration, prix, devis' : 'Configure, price, quote';
 
   return (
     <div className={active ? 'widget widget-generate' : 'widget widget-generate widget--paused'}>
@@ -385,28 +426,33 @@ function GenerateWidget({ active, lang }) {
           <span className="widget-dot widget-dot--yellow" />
           <span className="widget-dot widget-dot--green" />
           <span className="widget-filename">{labels.doc}</span>
+          <span className="widget-cpq-tag" title={cpqTooltip}>{labels.cpqTag}</span>
         </div>
         <div className="widget-form">
           <div className="widget-field">
             <span className="widget-field-label">{labels.client}</span>
             <span className="widget-field-value">{company}<span className="widget-caret" /></span>
           </div>
-          <div className="widget-field">
-            <span className="widget-field-label">{labels.value}</span>
-            <span className="widget-field-value">{value}<span className="widget-caret" /></span>
-          </div>
-          <div className="widget-field">
-            <span className="widget-field-label">{labels.term}</span>
-            <span className="widget-field-value">{term}<span className="widget-caret" /></span>
-          </div>
         </div>
-        <div className="widget-doc-preview">
-          <div className="widget-doc-line" style={{ width: '88%', animationDelay: '0.1s' }} />
-          <div className="widget-doc-line" style={{ width: '94%', animationDelay: '0.25s' }} />
-          <div className="widget-doc-line" style={{ width: '70%', animationDelay: '0.4s' }} />
-          <div className="widget-doc-line widget-doc-line--gen" style={{ animationDelay: '0.55s' }}>
-            <span className="widget-spinner" />{labels.generating}
-          </div>
+        <div className="widget-cpq-lines">
+          {lineItems.map((li, i) => (
+            <div
+              className="widget-cpq-line"
+              key={li.name}
+              style={{ animationDelay: `${0.15 + i * 0.12}s` }}
+            >
+              <span className="widget-cpq-line-name">{li.name}</span>
+              <span className="widget-cpq-line-qty">×{li.qty}</span>
+              <span className="widget-cpq-line-amount">{formatCurrency(li.qty * li.unit)}</span>
+            </div>
+          ))}
+        </div>
+        <div className="widget-cpq-total">
+          <span>{labels.total}</span>
+          <span className="widget-cpq-total-amount">{formatCurrency(totalDisplay)}</span>
+        </div>
+        <div className="widget-cpq-generating" style={{ animationDelay: '0.65s' }}>
+          <span className="widget-spinner" />{labels.generating}
         </div>
       </div>
     </div>
