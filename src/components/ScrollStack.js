@@ -126,13 +126,22 @@ const ScrollStack = ({
         blur = Math.max(0, depthInStack * blurAmount);
       }
 
+      // translateY tracks scrollTop continuously once the card enters its
+      // pin zone, with NO freeze point at the far end. Earlier, once
+      // scrollTop passed pinEnd, translateY was frozen at the value computed
+      // exactly at pinEnd and held there forever — but the card never
+      // actually leaves normal document flow (it's moved purely via
+      // transform, not position:sticky), so the rest of the page — including
+      // whatever section comes right after this one — kept scrolling
+      // normally underneath/behind it. The frozen card and the next
+      // section's real position would visually coincide for a stretch of
+      // scroll, which is exactly the overlap seen on mobile. Fix: once
+      // scrollTop >= pinStart, keep tracking it 1:1 with no upper bound, so
+      // the card scrolls away at the same rate as everything else instead of
+      // hanging in place.
       let translateY = 0;
-      const isPinned = scrollTop >= pinStart && scrollTop <= pinEnd;
-
-      if (isPinned) {
+      if (scrollTop >= pinStart) {
         translateY = scrollTop - cardTop + stackPositionPx + itemStackDistance * i;
-      } else if (scrollTop > pinEnd) {
-        translateY = pinEnd - cardTop + stackPositionPx + itemStackDistance * i;
       }
 
       // Fix: round to whole pixels, not 2 decimals. Sub-pixel translateY values
