@@ -1,29 +1,32 @@
-import { createContext, useContext, useRef, useCallback } from 'react';
+import { createContext, useContext, useCallback } from 'react';
 
 const LenisContext = createContext(null);
 
+// Simplificat complet: Lenis a fost eliminat de pe pagină odată cu
+// ScrollStack (singura componentă care îl crea). scrollTo foloseşte acum
+// scrollIntoView nativ, cu behavior: 'smooth' — suportat de toate browserele
+// moderne, fără dependență externă și fără riscul de bug-uri de sincronizare
+// fină scroll-poziție pe care Lenis le introducea (jitter, blocaje, etc.,
+// vânate îndelung pe ScrollStack înainte de a decide eliminarea completă).
 export const LenisProvider = ({ children }) => {
-  // Holds the single global Lenis instance once ScrollStack creates it.
-  // Using a ref (not state) because we don't want consumers to re-render
-  // when the instance is set — they only need it inside event handlers.
-  const lenisRef = useRef(null);
+  const scrollTo = useCallback((target, options = {}) => {
+    const el = typeof target === 'string' ? document.querySelector(target) : target;
+    if (!el) return;
 
-  const registerLenis = useCallback(instance => {
-    lenisRef.current = instance;
-  }, []);
-
-  const scrollTo = useCallback((target, options) => {
-    if (lenisRef.current) {
-      lenisRef.current.scrollTo(target, options);
+    if (options.offset) {
+      // scrollIntoView nu suportă un offset custom direct — calculăm manual
+      // poziția țintă (utilă pentru a compensa nav-ul fixed care altfel ar
+      // acoperi parțial secțiunea țintă) și scrollăm la ea explicit.
+      const rect = el.getBoundingClientRect();
+      const targetY = rect.top + window.scrollY + options.offset;
+      window.scrollTo({ top: targetY, behavior: 'smooth' });
     } else {
-      // Fallback in case nav is clicked before ScrollStack has mounted/registered.
-      const el = typeof target === 'string' ? document.querySelector(target) : target;
-      el?.scrollIntoView({ behavior: 'smooth' });
+      el.scrollIntoView({ behavior: 'smooth' });
     }
   }, []);
 
   return (
-    <LenisContext.Provider value={{ registerLenis, scrollTo }}>
+    <LenisContext.Provider value={{ scrollTo }}>
       {children}
     </LenisContext.Provider>
   );

@@ -3,7 +3,7 @@ import './App.css';
 import BlurText from './components/BlurText';
 import MagicBento from './components/MagicBento';
 import { BrowserRouter, Switch, Route, Link } from 'react-router-dom';
-import ScrollStack, { ScrollStackItem } from './components/ScrollStack';
+import FlowFade from './components/FlowFade';
 import BookACall from './components/BookACall';
 import { LenisProvider, useLenis } from './components/LenisContext';
 import GlobeCanvas from './components/GlobeCanvas';
@@ -23,20 +23,33 @@ import {
   HiOutlineServer,
   HiOutlineEyeOff,
   HiOutlineClipboardCheck,
+  HiOutlineClock,
   HiOutlineBadgeCheck,
 } from 'react-icons/hi';
 
 // ─── HOOKS: scroll-driven hero + reveal on view ────────────────────────────────
-function useHeroScrollProgress() {
-  const [progress, setProgress] = useState(0);
+// Era: useState + setProgress la fiecare scroll tick — asta re-randa tot
+// AppInner (părintele lui ScrollStack) de fiecare dată când Lenis mișca
+// scroll-ul, chiar dacă props-urile transmise mai jos rămâneau identice.
+// Pe dispozitive mai lente, acel re-render pass concura cu propriul RAF al
+// lui Lenis și cu updateCardTransforms() din ScrollStack pentru timp de
+// CPU în același frame — sărind/întârziind unele frame-uri de translateY,
+// perceput vizual ca smucitură sus-jos la scroll, nu ca micro-jitter de
+// sub-pixel (asta era deja reparat separat).
+// Fix: scrie direct pe stilul DOM-ului prin ref, fără să treacă niciodată
+// prin React state — niciun re-render declanșat, deci ScrollStack nu mai
+// concurează cu acest hook pentru ciclul de RAF.
+function useHeroScrollProgress(ref) {
   useEffect(() => {
     let raf = null;
     const handle = () => {
       const heroEl = document.querySelector('.hero');
-      if (!heroEl) return;
+      const el = ref.current;
+      if (!heroEl || !el) return;
       const h = heroEl.offsetHeight;
       const p = Math.min(Math.max(window.scrollY / (h * 0.8), 0), 1);
-      setProgress(p);
+      el.style.transform = `translateY(${p * -40}px) scale(${1 - p * 0.45})`;
+      el.style.opacity = String(1 - p * 0.5);
     };
     const onScroll = () => {
       if (raf) return;
@@ -45,8 +58,7 @@ function useHeroScrollProgress() {
     handle();
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
-  }, []);
-  return progress;
+  }, [ref]);
 }
 
 function useInView(threshold = 0.25) {
@@ -100,7 +112,7 @@ function NavScrollLink({ targetId, children, className }) {
     e.preventDefault();
     const target = document.querySelector(targetId);
     if (!target) return;
-    scrollTo(target, { offset: -80, duration: 1.1 }); // offset clears the fixed nav height
+    scrollTo(target, { offset: -80 }); // offset clears the fixed nav height
   };
 
   return (
@@ -612,7 +624,8 @@ function AppInner() {
     document.documentElement.lang = lang;
   }, [lang]);
 
-  const heroProgress = useHeroScrollProgress();
+  const heroSphereRef = useRef(null);
+  useHeroScrollProgress(heroSphereRef);
   const [flowRef, flowInView] = useInView(0.2);
   const [whyRef, whyInView] = useInView(0.2);
   const [securityIndex, setSecurityIndex] = useState(0);
@@ -630,7 +643,7 @@ function AppInner() {
 
       {/* ── NAV ── */}
       <nav className="nav">
-        <span className="nav-wordmark">Test</span>
+        <span className="nav-wordmark">Liora</span>
         <ul className="nav-links">
           <li><NavScrollLink targetId="#flow">{t.nav.flow}</NavScrollLink></li>
           <li><NavScrollLink targetId="#features">{t.nav.features}</NavScrollLink></li>
@@ -653,10 +666,7 @@ function AppInner() {
 
           <div
             className="hero-sphere-wrap"
-            style={{
-              transform: `translateY(${heroProgress * -40}px) scale(${1 - heroProgress * 0.45})`,
-              opacity: 1 - heroProgress * 0.5,
-            }}
+            ref={heroSphereRef}
           >
             <div className="hero-sphere">
               <div className="hero-sphere-glow" />
@@ -733,22 +743,10 @@ function AppInner() {
             <p className="section-sub">{t.flow.sub}</p>
           </div>
 
-          <ScrollStack
-            itemDistance={90}
-            itemScale={0.035}
-            itemStackDistance={26}
-            stackPosition="18%"
-            scaleEndPosition="8%"
-            baseScale={0.86}
-            blurAmount={1.1}
-            useWindowScroll={true}
-          >
-            {steps.map((s) => (
-              <ScrollStackItem key={s.key}>
-                <FlowStackCard step={s} lang={lang} />
-              </ScrollStackItem>
-            ))}
-          </ScrollStack>
+          <FlowFade
+            steps={steps}
+            renderCard={(step) => <FlowStackCard step={step} lang={lang} />}
+          />
         </div>
       </section>
 
@@ -869,7 +867,7 @@ function AppInner() {
       <footer className="footer" id="footer">
         <div className="footer-top">
           <div>
-            <span className="footer-wordmark">Test</span>
+            <span className="footer-wordmark">Liora</span>
             <p className="footer-tagline">{t.footer.tagline}</p>
           </div>
           <div className="footer-badges">
@@ -891,12 +889,10 @@ function AppInner() {
   );
 }
 
-// LenisProvider exposes the shared Lenis context — ScrollStack creates the
-// actual Lenis instance (useWindowScroll=true) and registers it here via
-// registerLenis, so NavScrollLink (scrollTo) can drive the same smooth-scroll
-// engine from outside ScrollStack. Scoped only to the homepage route — the
-// booking form page has no smooth-scroll needs, so it doesn't carry that
-// overhead.
+// LenisProvider exposes scrollTo (used by NavScrollLink) via context.
+// Lenis itself was removed along with ScrollStack — scrollTo now drives
+// native scrollIntoView/window.scrollTo with smooth behavior, no external
+// scroll library involved.
 export default function App() {
   return (
     <BrowserRouter>

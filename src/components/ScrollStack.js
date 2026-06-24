@@ -126,6 +126,15 @@ const ScrollStack = ({
         blur = Math.max(0, depthInStack * blurAmount);
       }
 
+      // translateY freezes once scrollTop passes pinEnd — this is the
+      // mechanism that keeps the whole stack visually compact (every card
+      // stays pinned, scaled down, sitting "behind" the next one) until the
+      // entire stack releases together near the end of the section. This
+      // freeze is intentional and necessary for the stack effect; the
+      // earlier bug wasn't the freeze itself, it was pinEnd being computed
+      // too close to the section that follows, so the frozen position
+      // overlapped the next section before that section had scrolled past.
+      // Fixed below by giving pinEnd real clearance from .scroll-stack-end.
       let translateY = 0;
       const isPinned = scrollTop >= pinStart && scrollTop <= pinEnd;
 
@@ -282,19 +291,37 @@ const ScrollStack = ({
     // Wait one frame so the marginBottom-driven layout has settled BEFORE we
     // read offsets and start Lenis. Reading offsets in the same tick we just
     // mutated layout was the timing race behind part of the visible shake.
+    // This is now the ONLY automatic recompute beyond explicit window resize
+    // below — earlier attempts to also recompute on document.fonts.ready and
+    // on a fixed settle-timeout (guarded by a "time since last scroll"
+    // check) were meant to fix a separate mobile overlap bug, but the guard
+    // itself turned out to be unreliable: Lenis's eased scroll emits its
+    // 'scroll' event with small gaps even during continuous physical
+    // scrolling, so the guard could wrongly conclude scrolling had "settled"
+    // and let a recompute through mid-gesture — rewriting cardTopsRef while
+    // scrollTop kept changing, producing a visible jump in translateY on the
+    // very next frame. That was confirmed with real scrollTop/cardTop logs
+    // showing cardTop changing by hundreds of pixels while scrollTop stayed
+    // constant. Removed entirely; if the mobile overlap bug resurfaces, it
+    // needs a different fix that doesn't touch offsets during scroll.
     requestAnimationFrame(() => {
       recomputeOffsets();
       setupLenis();
       updateCardTransforms();
     });
 
+    let resizeDebounceId = null;
     const handleResize = () => {
-      recomputeOffsets();
-      updateCardTransforms();
+      if (resizeDebounceId) clearTimeout(resizeDebounceId);
+      resizeDebounceId = setTimeout(() => {
+        recomputeOffsets();
+        updateCardTransforms();
+      }, 200);
     };
     window.addEventListener('resize', handleResize);
 
     return () => {
+      if (resizeDebounceId) clearTimeout(resizeDebounceId);
       window.removeEventListener('resize', handleResize);
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);

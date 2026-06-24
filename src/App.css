@@ -303,10 +303,12 @@ a:focus-visible, button:focus-visible {
   overflow: hidden;
   transition: box-shadow 0.3s ease, border-color 0.3s ease;
 }
-.widget:hover .widget-window {
-  box-shadow: 0 26px 60px rgba(7, 44, 166,0.3);
-  border-color: rgba(7, 44, 166,0.5);
-}
+/* Hover effect removed: with the cursor stationary while the card moves
+   underneath it via ScrollStack's transform, the element under the pointer
+   changes continuously as the card passes through that screen position —
+   triggering repeated hover enter/leave and re-firing this transition on
+   every cycle, perceived as jitter while scrolling with the mouse resting
+   over a card. */
 .widget-titlebar {
   display: flex; align-items: center; gap: 6px;
   padding: 10px 14px;
@@ -858,4 +860,39 @@ a:focus-visible, button:focus-visible {
 
 @media (max-width: 480px) {
   .book-call-card { padding: 2rem 1.5rem; border-radius: 22px; }
+}
+
+/* ── FLOW FADE — înlocuiește mecanismul de stivă din ScrollStack ─────────
+   Fiecare card stă la poziția lui naturală în flow-ul documentului (nu mai
+   există pin/transform calculat din scrollTop) — elimină structural toată
+   clasa de bug-uri vânată anterior pe ScrollStack (jitter la scroll,
+   suprapunere cu secțiunea următoare, blocaj la ultimul card, interferență
+   cu :hover). Fade-in la intrare în viewport, fade-out la ieșire, prin
+   IntersectionObserver simplu — fără nicio sincronizare fină cu poziția
+   de scroll. */
+.flow-fade-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6rem;
+}
+.flow-fade-card {
+  background: linear-gradient(160deg, #14152b 0%, #2a2c4a 100%);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 28px;
+  box-shadow: 0 24px 60px rgba(20,21,43,0.35);
+  min-height: 22rem;
+  padding: 2.5rem;
+  box-sizing: border-box;
+  opacity: 0;
+  transform: translateY(40px);
+  transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1), transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.flow-fade-card--visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@media (max-width: 768px) {
+  .flow-fade-list { gap: 3.5rem; }
+  .flow-fade-card { min-height: 18rem; padding: 1.85rem; }
 }
