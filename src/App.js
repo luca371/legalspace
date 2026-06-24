@@ -643,7 +643,7 @@ function AppInner() {
 
       {/* ── NAV ── */}
       <nav className="nav">
-        <span className="nav-wordmark">Liora</span>
+        <span className="nav-wordmark">Legal name</span>
         <ul className="nav-links">
           <li><NavScrollLink targetId="#flow">{t.nav.flow}</NavScrollLink></li>
           <li><NavScrollLink targetId="#features">{t.nav.features}</NavScrollLink></li>
@@ -867,7 +867,7 @@ function AppInner() {
       <footer className="footer" id="footer">
         <div className="footer-top">
           <div>
-            <span className="footer-wordmark">Liora</span>
+            <span className="footer-wordmark">Legal name</span>
             <p className="footer-tagline">{t.footer.tagline}</p>
           </div>
           <div className="footer-badges">
