@@ -288,6 +288,28 @@ const ScrollStack = ({
       updateCardTransforms();
     });
 
+    // Recompute again once web fonts finish loading, and once more after a
+    // short delay — on first mobile load, sections BELOW the stack (e.g.
+    // Features' card-grid, which switches from 2 columns to 1 column under
+    // a separate breakpoint) can still be settling their height when the
+    // first measurement runs. .scroll-stack-end's position depends on that
+    // total page height, so a stale reading here makes pinEnd wrong — the
+    // last card stays pinned too long and visibly overlaps the section
+    // rendered right after it. window.resize alone doesn't catch this,
+    // since the viewport itself never changes size on a phone's initial
+    // load.
+    let settleTimeoutId = null;
+    if (document.fonts?.ready) {
+      document.fonts.ready.then(() => {
+        recomputeOffsets();
+        updateCardTransforms();
+      });
+    }
+    settleTimeoutId = setTimeout(() => {
+      recomputeOffsets();
+      updateCardTransforms();
+    }, 600);
+
     const handleResize = () => {
       recomputeOffsets();
       updateCardTransforms();
@@ -295,6 +317,7 @@ const ScrollStack = ({
     window.addEventListener('resize', handleResize);
 
     return () => {
+      if (settleTimeoutId) clearTimeout(settleTimeoutId);
       window.removeEventListener('resize', handleResize);
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
