@@ -23,7 +23,6 @@ import {
   HiOutlineServer,
   HiOutlineEyeOff,
   HiOutlineClipboardCheck,
-  HiOutlineClock,
   HiOutlineBadgeCheck,
 } from 'react-icons/hi';
 
